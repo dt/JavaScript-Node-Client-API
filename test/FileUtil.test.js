@@ -90,26 +90,27 @@ describe('FileUtil EOF/read race', () => {
     fu.SEGMENT_SIZE = SEGMENT_SIZE;
     await fu.init();
 
+    // Give stream time to buffer some data
+    await new Promise(resolve => setTimeout(resolve, 100));
+
     fu.read();
 
     // Wait for the underlying stream to finish reading and fire 'end'
     // while the consumer hasn't called read() again due to backpressure
     await new Promise((resolve) => {
-      setTimeout(() => resolve(), 500);
+      setTimeout(() => {
+        // After backpressure delay, consumer calls read() again to get remainder
+        fu.read();
+        // Give a moment for the callback to fire
+        setTimeout(resolve, 50);
+      }, 500);
     });
 
     const concatenated = concatUint8(receivedParts);
 
-    console.log({
-      original: original.length,
-      got: concatenated.length,
-      parts: receivedParts.map(p => p.length),
-      missing: original.length - concatenated.length,
-      completes
-    });
-
     // Should receive all data including what was buffered when EOF fired
     expect(concatenated.length).toBe(original.length);
+    expect(completes).toBe(1);
 
     // Cleanup
     fs.unlinkSync(filePath);
